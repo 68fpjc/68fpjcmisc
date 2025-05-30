@@ -1,0 +1,6 @@
+* working-tree-encoding=cp932
+*.md !working-tree-encoding
+.gitattributes !working-tree-encoding
+.editorconfig !working-tree-encoding
+
+*.png binary !working-tree-encoding

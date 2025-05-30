@@ -1,0 +1,22 @@
+# EditorConfig is awesome: https://EditorConfig.org
+
+# top-most EditorConfig file
+root = true
+
+[*]
+charset = cp932
+indent_style = tab
+indent_size = 8
+end_of_line = crlf
+
+[*.py]
+indent_style = space
+indent_size = 4
+
+[{*.md,.gitattributes,.editorconfig}]
+charset = utf-8
+indent_style = space
+indent_size = 4
+end_of_line = unset
+trim_trailing_whitespace = false
+insert_final_newline = true
