@@ -37,6 +37,7 @@ def setup_global_state(
     @param opt_num_sp スプライトの数
     @param opt_use_asm_int 割り込み処理でインラインアセンブラを使用する場合は True
     @param opt_use_asm_move 移動処理でインラインアセンブラを使用する場合は True
+    @param opt_invert_bg マップデータを反転する場合は True
     """
 
     @micropython.viper
@@ -324,48 +325,70 @@ def setup_sprite(s: Sprite):
     )
 
 
-"""
-ここからメイン処理
-"""
-micropython.alloc_emergency_exception_buf(100)
+def parse_args(argv):
+    """
+    コマンドライン引数を解析する
 
-x68k.curoff()  # カーソル非表示
-x68k.crtmod(0)  # 512x512, 16 色 4 画面, 高解像度
-s = x68k.Sprite()
-setup_sprite(s)  # スプライトハードウェアの初期設定を行う
+    @param argv コマンドライン引数
+    @return tuple (num_sp, use_asm_int, use_asm_move, invert_bg)
+    """
+    num_sp = NMAXSP  # スプライトの数 (デフォルトは 128)
+    use_asm_int = True  # 割り込み処理でインラインアセンブラを使用する
+    use_asm_move = True  # 移動処理でインラインアセンブラを使用する
+    invert_bg = False  # マップデータを反転する
+    for arg in argv:
+        if arg.startswith("--sp="):
+            try:
+                v = int(arg.split("=")[1])
+                if v >= 1 and v <= NMAXSP:
+                    num_sp = v
+            except (ValueError, IndexError):
+                pass
+        elif arg == "--no-asm-int":
+            use_asm_int = False
+        elif arg == "--no-asm-move":
+            use_asm_move = False
+        elif arg == "--invert-bg":
+            invert_bg = True
+    return num_sp, use_asm_int, use_asm_move, invert_bg
 
-num_sp = NMAXSP  # スプライトの数 (デフォルトは 128)
-for arg in argv:
-    if arg.startswith("--sp="):
-        try:
-            v = int(arg.split("=")[1])
-            if v >= 1 and v <= NMAXSP:
-                num_sp = v
-        except (ValueError, IndexError):
-            pass
 
-setup_global_state(  # グローバル変数を初期化する
-    num_sp,  #
-    "--no-asm-int" not in argv,  #
-    "--no-asm-move" not in argv,  #
-    "--invert-bg" in argv,  #
-)
+def main():
+    """
+    メイン関数
+    """
+    micropython.alloc_emergency_exception_buf(100)
 
-# デバッグ情報
-if __debug__:
-    print("spdat:", hex(uctypes.addressof(spdat)))
-    print("bgdat:", hex(uctypes.addressof(bgdat)))
-    print("spreg:", hex(uctypes.addressof(spreg)))
+    x68k.curoff()  # カーソル非表示
+    x68k.crtmod(0)  # 512x512, 16 色 4 画面, 高解像度
+    s = x68k.Sprite()
+    setup_sprite(s)  # スプライトハードウェアの初期設定を行う
 
-move_first()  # 初回
-with x68k.Super(), x68k.IntVSync(disp_int, None):
-    while True:
-        # キーが押されたら終了する
-        if (x68k.iocs(x68k.i.B_KEYSNS) & 0xFFFF) and (
-            x68k.iocs(x68k.i.B_KEYINP) & 0xFF
-        ):
-            break
+    # コマンドライン引数を解析する
+    opt_num_sp, opt_use_asm_int, opt_use_asm_move, opt_invert_bg = parse_args(argv)
 
-s.disp(False)  # スプライト非表示
-x68k.curon()  # カーソル表示
-exit(0)
+    setup_global_state(  # グローバル変数を初期化する
+        opt_num_sp, opt_use_asm_int, opt_use_asm_move, opt_invert_bg
+    )
+
+    # デバッグ情報
+    if __debug__:
+        print("spdat:", hex(uctypes.addressof(spdat)))
+        print("bgdat:", hex(uctypes.addressof(bgdat)))
+        print("spreg:", hex(uctypes.addressof(spreg)))
+
+    move_first()  # 初回
+    with x68k.Super(), x68k.IntVSync(disp_int, None):
+        while True:
+            # キーが押されたら終了する
+            if (x68k.iocs(x68k.i.B_KEYSNS) & 0xFFFF) and (
+                x68k.iocs(x68k.i.B_KEYINP) & 0xFF
+            ):
+                break
+
+    s.disp(False)  # スプライト非表示
+    x68k.curon()  # カーソル表示
+    exit(0)
+
+
+main()
