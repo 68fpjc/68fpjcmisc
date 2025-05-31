@@ -17,6 +17,7 @@ micropython guru.py
 
 -   `--no-asm-int` : 割り込み処理でインラインアセンブラを使わない (激重)
 -   `--no-asm-move` : 移動処理でインラインアセンブラを使わない (激重)
+-   `--invert-bg` : BG を反転する
 
 ## メモ
 

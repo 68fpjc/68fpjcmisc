@@ -26,7 +26,9 @@ BGDATAAREA1 = const(0xEBE000)  # BG の BG データエリア 1
 WORD = const(2)  # ワードサイズ
 
 
-def setup_global_state(opt_use_asm_int: bool, opt_use_asm_move: bool):
+def setup_global_state(
+    opt_use_asm_int: bool, opt_use_asm_move: bool, opt_invert_bg: bool
+):
     """
     変数を初期化する。仕方なくグローバル変数で
 
@@ -36,6 +38,17 @@ def setup_global_state(opt_use_asm_int: bool, opt_use_asm_move: bool):
     @param opt_use_asm_int 割り込み処理でインラインアセンブラを使用する場合は True
     @param opt_use_asm_move 移動処理でインラインアセンブラを使用する場合は True
     """
+
+    @micropython.viper
+    def invert_bgdat():
+        """
+        マップデータを反転する
+        """
+        p = ptr16(bgdat)
+        for i in range(int(bgdat_idx_max)):
+            p[i] ^= 0x0001
+        pass
+
     global spreg, spdat, bgdat, sp_offset0, sp_offset
     global bgdat_idx_max, bgx, bgctr, bgsour_idx, bgdest_idx
     global is_disp_ready
@@ -59,6 +72,8 @@ def setup_global_state(opt_use_asm_int: bool, opt_use_asm_move: bool):
     is_disp_ready = False  # スプライト / BG 書き換え準備完了フラグ
     use_asm_int = opt_use_asm_int  # 割り込み処理でインラインアセンブラを使用するか
     use_asm_move = opt_use_asm_move  # 移動処理でインラインアセンブラを使用するか
+    if opt_invert_bg:
+        invert_bgdat()
 
 
 @micropython.viper
@@ -315,6 +330,7 @@ setup_sprite(s)  # スプライトハードウェアの初期設定を行う
 setup_global_state(  # グローバル変数を初期化する
     "--no-asm-int" not in argv,  #
     "--no-asm-move" not in argv,  #
+    "--invert-bg" in argv,  #
 )
 
 # デバッグ情報
