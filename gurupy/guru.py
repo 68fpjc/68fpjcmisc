@@ -27,7 +27,7 @@ WORD = const(2)  # ワードサイズ
 
 
 def setup_global_state(
-    opt_use_asm_int: bool, opt_use_asm_move: bool, opt_invert_bg: bool
+    opt_num_sp: int, opt_use_asm_int: bool, opt_use_asm_move: bool, opt_invert_bg: bool
 ):
     """
     変数を初期化する。仕方なくグローバル変数で
@@ -35,6 +35,7 @@ def setup_global_state(
     - インスタンス変数等にするとアクセスが非常に重い
     - 関数のローカル変数にするとバイパーモードでのアクセスが面倒
 
+    @param opt_num_sp スプライトの数
     @param opt_use_asm_int 割り込み処理でインラインアセンブラを使用する場合は True
     @param opt_use_asm_move 移動処理でインラインアセンブラを使用する場合は True
     """
@@ -49,7 +50,7 @@ def setup_global_state(
             p[i] ^= 0x0001
         pass
 
-    global spreg, spdat, bgdat, sp_offset0, sp_offset
+    global spreg, spdat, bgdat, sp_offset0, sp_offset, num_sp
     global bgdat_idx_max, bgx, bgctr, bgsour_idx, bgdest_idx
     global is_disp_ready
     global use_asm_int, use_asm_move
@@ -60,7 +61,7 @@ def setup_global_state(
         print(f"Error: {e}")
         exit(1)
 
-    spreg = create_spreg()  # 仮想スプライトスクロールレジスタ
+    spreg = create_spreg(opt_num_sp)  # 仮想スプライトスクロールレジスタ
     sp_offset0 = len(spdat) // 2 // WORD // 2  # スプライト座標データのオフセット初期値
     sp_offset = sp_offset0  # スプライト座標データのオフセット
 
@@ -70,6 +71,7 @@ def setup_global_state(
     bgsour_idx = 0  # マップデータのインデックス (0 〜 bgdat_idx_max - 1)
     bgdest_idx = 32  # BG データエリアのインデックス (0 〜 63)
     is_disp_ready = False  # スプライト / BG 書き換え準備完了フラグ
+    num_sp = opt_num_sp  # スプライトの数
     use_asm_int = opt_use_asm_int  # 割り込み処理でインラインアセンブラを使用するか
     use_asm_move = opt_use_asm_move  # 移動処理でインラインアセンブラを使用するか
     if opt_invert_bg:
@@ -97,11 +99,11 @@ def disp_int(arg):
     # 仮想スプライトスクロールレジスタから
     # (実) スプライトスクロールレジスタへブロック転送する
     if use_asm_int:
-        disp_asm_sp(spreg)
+        disp_asm_sp(spreg, num_sp)
     else:
         sp = ptr16(spreg)
         dp = ptr16(SPSCRLREG)
-        for i in range(0, NMAXSP * 4, 4):
+        for i in range(0, int(num_sp) * 4, 4):
             dp[i + 0] = sp[i + 0]  # X 座標
             dp[i + 1] = sp[i + 1]  # Y 座標
             dp[i + 2] = sp[i + 2]  # 属性 1
@@ -134,15 +136,17 @@ def disp_int(arg):
 
 
 @micropython.asm_m68k
-def disp_asm_sp(spreg: bytes):
+def disp_asm_sp(spreg: bytes, num_sp: int):
     """
     スプライトの表示を行うアセンブラ実装
 
     @param spreg 仮想スプライトスクロールレジスタ
+    @param num_sp スプライトの数 (下位 16 ビットのみ使用)
     """
-    moveal(fp[8], a0)
+    moveal(fp[8], a0)  # spreg
     lea([0xEB0000], a1)
-    movew(NMAXSP - 1, d0)
+    movew(fp[12 + 2], d0)  # num_sp
+    subqw(1, d0)
     label(cpylp)
     movel([a0.inc], [a1.inc])
     movel([a0.inc], [a1.inc])
@@ -227,12 +231,12 @@ def update_spbuf():
     # スプライト
     v = int(sp_offset)
     if use_asm_move:
-        update_spbuf_asm(spdat, spreg, v)
+        update_spbuf_asm(spdat, spreg, v, num_sp)
     else:
         spdat_ptr = ptr16(spdat)
         spreg_ptr = ptr16(spreg)
         i = 0
-        for j in range(0, NMAXSP * 4, 4):
+        for j in range(0, int(num_sp) * 4, 4):
             idx = (v + i * 3) * 2
             spreg_ptr[j + 0] = spdat_ptr[idx + 0]  # X 座標
             spreg_ptr[j + 1] = spdat_ptr[idx + 1]  # Y 座標
@@ -240,13 +244,16 @@ def update_spbuf():
 
 
 @micropython.asm_m68k
-def update_spbuf_asm(spdat_buf: bytes, spreg_buf: bytearray, sp_offset: int):
+def update_spbuf_asm(
+    spdat_buf: bytes, spreg_buf: bytearray, sp_offset: int, num_sp: int
+):
     """
     仮想スプライトスクロールレジスタを更新するアセンブラ実装
 
     @param spdat_buf スプライト座標データ
     @param spreg_buf 仮想スプライトスクロールレジスタ
     @param sp_offset オフセット値 (下位 16 ビットのみ使用)
+    @param num_sp スプライトの数 (下位 16 ビットのみ使用)
     """
     moveal(fp[8], a0)  # spdat
     moveal(fp[12], a1)  # spreg
@@ -254,7 +261,8 @@ def update_spbuf_asm(spdat_buf: bytes, spreg_buf: bytearray, sp_offset: int):
     addw(d0, d0)
     addw(d0, d0)
     addaw(d0, a0)
-    movew(NMAXSP - 1, d1)
+    movew(fp[20 + 2], d1)  # num_sp
+    subqw(1, d1)
     label(setlp)
     movel([a0.inc], [a1.inc])
     addqw(8, a0)
@@ -282,12 +290,12 @@ def load_binary_file(filename: str) -> bytes:
         raise OSError(f"Cannot load file '{filename}': {e}")
 
 
-def create_spreg() -> bytearray:
+def create_spreg(num_sp: int) -> bytearray:
     """
     仮想スプライトスクロールレジスタを作成する
     """
     spreg = bytearray()  # 仮想スプライトスクロールレジスタ
-    for _ in range(NMAXSP):  # 仮想スプライトスクロールレジスタを初期化する
+    for _ in range(num_sp):  # 仮想スプライトスクロールレジスタを初期化する
         spreg.extend(pack("4H", 0x0000, 0x0000, 0x0101, 0x0003))
     return spreg
 
@@ -327,7 +335,18 @@ x68k.crtmod(0)  # 512x512, 16 色 4 画面, 高解像度
 s = x68k.Sprite()
 setup_sprite(s)  # スプライトハードウェアの初期設定を行う
 
+num_sp = NMAXSP  # スプライトの数 (デフォルトは 128)
+for arg in argv:
+    if arg.startswith("--sp="):
+        try:
+            v = int(arg.split("=")[1])
+            if v >= 1 and v <= NMAXSP:
+                num_sp = v
+        except (ValueError, IndexError):
+            pass
+
 setup_global_state(  # グローバル変数を初期化する
+    num_sp,  #
     "--no-asm-int" not in argv,  #
     "--no-asm-move" not in argv,  #
     "--invert-bg" in argv,  #
