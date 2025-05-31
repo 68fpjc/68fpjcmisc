@@ -26,12 +26,15 @@ BGDATAAREA1 = const(0xEBE000)  # BG の BG データエリア 1
 WORD = const(2)  # ワードサイズ
 
 
-def setup_global_state():
+def setup_global_state(opt_use_asm_int: bool, opt_use_asm_move: bool):
     """
     変数を初期化する。仕方なくグローバル変数で
 
     - インスタンス変数等にするとアクセスが非常に重い
     - 関数のローカル変数にするとバイパーモードでのアクセスが面倒
+
+    @param opt_use_asm_int 割り込み処理でインラインアセンブラを使用する場合は True
+    @param opt_use_asm_move 移動処理でインラインアセンブラを使用する場合は True
     """
     global spreg, spdat, bgdat, sp_offset0, sp_offset
     global bgdat_idx_max, bgx, bgctr, bgsour_idx, bgdest_idx
@@ -54,8 +57,8 @@ def setup_global_state():
     bgsour_idx = 0  # マップデータのインデックス (0 〜 bgdat_idx_max - 1)
     bgdest_idx = 32  # BG データエリアのインデックス (0 〜 63)
     is_disp_ready = False  # スプライト / BG 書き換え準備完了フラグ
-    use_asm_int = True  # 割り込み処理でインラインアセンブラを使用するか
-    use_asm_move = True  # 移動処理でインラインアセンブラを使用するか
+    use_asm_int = opt_use_asm_int  # 割り込み処理でインラインアセンブラを使用するか
+    use_asm_move = opt_use_asm_move  # 移動処理でインラインアセンブラを使用するか
 
 
 @micropython.viper
@@ -309,13 +312,9 @@ x68k.crtmod(0)  # 512x512, 16 色 4 画面, 高解像度
 s = x68k.Sprite()
 setup_sprite(s)  # スプライトハードウェアの初期設定を行う
 
-setup_global_state()  # グローバル変数を初期化する
-
-use_asm_int = (  # 割り込み処理でインラインアセンブラを使用するか
-    "--no-asm-int" not in argv
-)
-use_asm_move = (  # 移動処理でインラインアセンブラを使用するか
-    "--no-asm-move" not in argv
+setup_global_state(  # グローバル変数を初期化する
+    "--no-asm-int" not in argv,  #
+    "--no-asm-move" not in argv,  #
 )
 
 # デバッグ情報
