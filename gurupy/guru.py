@@ -8,9 +8,8 @@ import x68k
 from binascii import unhexlify
 from struct import pack
 from sys import exit, argv
+import uctypes
 import micropython
-
-from debug_utils import print_buffer_info
 
 # if __name__ != "__main__":
 #     print("This is not intended to be imported as a module.")
@@ -353,9 +352,10 @@ setup_global_state(  # グローバル変数を初期化する
 )
 
 # デバッグ情報
-print_buffer_info("spdat", spdat)
-print_buffer_info("bgdat", bgdat)
-print_buffer_info("spreg", spreg)
+if __debug__:
+    print("spdat:", hex(uctypes.addressof(spdat)))
+    print("bgdat:", hex(uctypes.addressof(bgdat)))
+    print("spreg:", hex(uctypes.addressof(spreg)))
 
 move_first()  # 初回
 with x68k.Super(), x68k.IntVSync(disp_int, None):
