@@ -35,7 +35,7 @@ def setup_global_state(
     - 関数のローカル変数にするとバイパーモードでのアクセスが面倒
 
     @param opt_num_sp スプライトの数
-    @param opt_use_asm_int 割り込み処理でインラインアセンブラを使用する場合は True
+    @param opt_use_asm_int 描画処理でインラインアセンブラを使用する場合は True
     @param opt_use_asm_move 移動処理でインラインアセンブラを使用する場合は True
     @param opt_invert_bg マップデータを反転する場合は True
     """
@@ -52,7 +52,6 @@ def setup_global_state(
 
     global spreg, spdat, bgdat, sp_offset0, sp_offset, num_sp
     global bgdat_idx_max, bgx, bgctr, bgsour_idx, bgdest_idx
-    global is_disp_ready
     global use_asm_int, use_asm_move
     try:
         spdat = load_binary_file("spdat.bin")  # スプライト座標データ
@@ -70,27 +69,18 @@ def setup_global_state(
     bgctr = 0  # BG 更新用カウンタ (0 〜 15)
     bgsour_idx = 0  # マップデータのインデックス (0 〜 bgdat_idx_max - 1)
     bgdest_idx = 32  # BG データエリアのインデックス (0 〜 63)
-    is_disp_ready = False  # スプライト / BG 書き換え準備完了フラグ
     num_sp = opt_num_sp  # スプライトの数
-    use_asm_int = opt_use_asm_int  # 割り込み処理でインラインアセンブラを使用するか
+    use_asm_int = opt_use_asm_int  # 描画処理でインラインアセンブラを使用するか
     use_asm_move = opt_use_asm_move  # 移動処理でインラインアセンブラを使用するか
     if opt_invert_bg:
         invert_bgdat()
 
 
 @micropython.viper
-def disp_int(arg):
+def render():
     """
-    割り込み処理。スプライトと BG の表示を行う
-
-    @param arg 引数 (未使用)
+    スプライトと BG の表示を行う
     """
-    global is_disp_ready
-
-    if not is_disp_ready:
-        return
-    is_disp_ready = False
-
     bgctrlreg = ptr16(BGCTRLREG)
     bgctrlreg[0] = 0x0000  # スプライト / BG の表示をオフにする
 
@@ -131,8 +121,6 @@ def disp_int(arg):
                 i += 64
 
     bgctrlreg[0] = 0x0203  # スプライト / BG の表示をオンにする
-
-    micropython.schedule(move, None)
 
 
 @micropython.asm_m68k
@@ -178,11 +166,9 @@ def disp_asm_bg(bgdat: bytes, bgsour_idx: int, bgdest_idx: int):
 
 
 @micropython.viper
-def move(arg):
+def move():
     """
-    スプライトと BG の移動処理を行い、割り込みによる画面更新を許可する
-
-    @param arg 引数 (未使用)
+    スプライトと BG の移動処理を行う
     """
     # スプライト
     global sp_offset
@@ -207,20 +193,16 @@ def move(arg):
             v = 0
         bgdest_idx = v
 
-    # 仮想スプライトスクロールレジスタを更新し、割り込みによる画面更新を許可する
-    move_first()
+    update_spbuf()  # 仮想スプライトスクロールレジスタを更新する
 
 
 @micropython.viper
 def move_first():
     """
-    仮想スプライトスクロールレジスタを更新し、割り込みによる画面更新を許可する
+    スプライトと BG の移動処理を行う (初回)
     """
 
-    update_spbuf()  # 仮想スプライトスクロールレジスタを更新
-
-    global is_disp_ready
-    is_disp_ready = True  # 割り込みによる画面更新を許可する
+    update_spbuf()  # 仮想スプライトスクロールレジスタを更新する
 
 
 @micropython.viper
@@ -333,7 +315,7 @@ def parse_args(argv):
     @return tuple (num_sp, use_asm_int, use_asm_move, invert_bg)
     """
     num_sp = NMAXSP  # スプライトの数 (デフォルトは 128)
-    use_asm_int = True  # 割り込み処理でインラインアセンブラを使用する
+    use_asm_int = True  # 描画処理でインラインアセンブラを使用する
     use_asm_move = True  # 移動処理でインラインアセンブラを使用する
     invert_bg = False  # マップデータを反転する
     for arg in argv:
@@ -357,6 +339,23 @@ def main():
     """
     メイン関数
     """
+
+    @micropython.viper
+    def mainloop():
+        """
+        メインループ
+        """
+        move_first()  # 初回
+        while True:
+            # キーが押されたら終了する
+            if (int(x68k.iocs(x68k.i.B_KEYSNS)) & 0xFFFF) and (
+                int(x68k.iocs(x68k.i.B_KEYINP)) & 0xFF
+            ):
+                break
+            x68k.vsync()  # 垂直帰線期間を待つ
+            render()  # スプライトと BG の表示を行う
+            move()  # スプライトと BG の移動処理を行う
+
     micropython.alloc_emergency_exception_buf(100)
 
     x68k.curoff()  # カーソル非表示
@@ -377,14 +376,8 @@ def main():
         print("bgdat:", hex(uctypes.addressof(bgdat)))
         print("spreg:", hex(uctypes.addressof(spreg)))
 
-    move_first()  # 初回
-    with x68k.Super(), x68k.IntVSync(disp_int, None):
-        while True:
-            # キーが押されたら終了する
-            if (x68k.iocs(x68k.i.B_KEYSNS) & 0xFFFF) and (
-                x68k.iocs(x68k.i.B_KEYINP) & 0xFF
-            ):
-                break
+    with x68k.Super():
+        mainloop()
 
     s.disp(False)  # スプライト非表示
     x68k.curon()  # カーソル表示
