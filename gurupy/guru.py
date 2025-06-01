@@ -80,6 +80,16 @@ def vsync_and_render():
     """
     垂直帰線期間を待ち、スプライトと BG の表示を行う
     """
+    # 垂直帰線期間を待つ前にグローバル変数をキャッシュしておく
+    _use_asm_int = use_asm_int
+    _spreg = spreg
+    _num_sp = num_sp
+    _bgdat = bgdat
+    _bgsour_idx = bgsour_idx
+    _bgdest_idx = bgdest_idx
+    _bgx = bgx
+    _bgctr = bgctr
+
     x68k.vsync()  # 垂直帰線期間を待つ
 
     bgctrlreg = ptr16(BGCTRLREG)
@@ -89,12 +99,12 @@ def vsync_and_render():
 
     # 仮想スプライトスクロールレジスタから
     # (実) スプライトスクロールレジスタへブロック転送する
-    if use_asm_int:
-        render_asm_sp(spreg, num_sp)
+    if _use_asm_int:
+        render_asm_sp(_spreg, _num_sp)
     else:
-        sp = ptr16(spreg)
+        sp = ptr16(_spreg)
         dp = ptr16(SPSCRLREG)
-        for i in range(0, int(num_sp) * 4, 4):
+        for i in range(0, int(_num_sp) * 4, 4):
             dp[i + 0] = sp[i + 0]  # X 座標
             dp[i + 1] = sp[i + 1]  # Y 座標
             dp[i + 2] = sp[i + 2]  # 属性 1
@@ -105,18 +115,18 @@ def vsync_and_render():
     # BG の表示 X 座標を更新する
     # (1 ワードの更新なのでインラインアセンブラを使うまでもない？)
     dp = ptr16(BGSCRLREG0)
-    dp[0] = int(bgx)  # BG の表示 X 座標を更新する
+    dp[0] = int(_bgx)  # BG の表示 X 座標を更新する
 
     # 16 回スクロールしたら BG を書き直す
-    if not bgctr:
-        if use_asm_int:
+    if not _bgctr:
+        if _use_asm_int:
             # インラインアセンブラには 5 つ以上の引数を渡せないようだ
-            render_asm_bg(bgdat, bgsour_idx, bgdest_idx)
+            render_asm_bg(_bgdat, _bgsour_idx, _bgdest_idx)
         else:
-            sp = ptr16(bgdat)
+            sp = ptr16(_bgdat)
             dp = ptr16(BGDATAAREA1)
-            i = int(bgdest_idx)
-            j = int(bgsour_idx)
+            i = int(_bgdest_idx)
+            j = int(_bgsour_idx)
             for k in range(32):  # 32 キャラクタ分転送する
                 dp[i] = sp[j + k]
                 i += 64
