@@ -80,6 +80,47 @@ def vsync_and_render():
     """
     垂直帰線期間を待ち、スプライトと BG の表示を行う
     """
+
+    @micropython.asm_m68k
+    def render_asm_sp(spreg: bytes, num_sp: int):
+        """
+        スプライトの表示を行うアセンブラ実装
+
+        @param spreg 仮想スプライトスクロールレジスタ
+        @param num_sp スプライトの数 (下位 16 ビットのみ使用)
+        """
+        moveal(fp[8], a0)  # spreg
+        lea([0xEB0000], a1)
+        movew(fp[12 + 2], d0)  # num_sp
+        subqw(1, d0)
+        label(cpylp)
+        movel([a0.inc], [a1.inc])
+        movel([a0.inc], [a1.inc])
+        dbra(d0, cpylp)
+
+    @micropython.asm_m68k
+    def render_asm_bg(bgdat: bytes, bgsour_idx: int, bgdest_idx: int):
+        """
+        BG の表示を行うアセンブラ実装
+
+        @param bgdat マップデータ
+        @param bgsour_idx マップデータのインデックス (下位 16 ビットのみ使用)
+        @param bgdest_idx BG データエリアのインデックス (下位 16 ビットのみ使用)
+        """
+        moveal(fp[8], a0)
+        movew(fp[12 + 2], d0)
+        addw(d0, d0)
+        addaw(d0, a0)
+        lea([0xEBE000], a1)
+        movew(fp[16 + 2], d0)
+        addw(d0, d0)
+        addaw(d0, a1)
+        moveq(32 - 1, d0)  # 32 キャラクタ分転送する
+        label(bglp)
+        movew([a0.inc], [a1])
+        lea([64 * 2, a1], a1)
+        dbra(d0, bglp)
+
     # 垂直帰線期間を待つ前にグローバル変数をキャッシュしておく
     _use_asm_int = use_asm_int
     _spreg = spreg
@@ -132,48 +173,6 @@ def vsync_and_render():
                 i += 64
 
     bgctrlreg[0] = 0x0203  # スプライト / BG の表示をオンにする
-
-
-@micropython.asm_m68k
-def render_asm_sp(spreg: bytes, num_sp: int):
-    """
-    スプライトの表示を行うアセンブラ実装
-
-    @param spreg 仮想スプライトスクロールレジスタ
-    @param num_sp スプライトの数 (下位 16 ビットのみ使用)
-    """
-    moveal(fp[8], a0)  # spreg
-    lea([0xEB0000], a1)
-    movew(fp[12 + 2], d0)  # num_sp
-    subqw(1, d0)
-    label(cpylp)
-    movel([a0.inc], [a1.inc])
-    movel([a0.inc], [a1.inc])
-    dbra(d0, cpylp)
-
-
-@micropython.asm_m68k
-def render_asm_bg(bgdat: bytes, bgsour_idx: int, bgdest_idx: int):
-    """
-    BG の表示を行うアセンブラ実装
-
-    @param bgdat マップデータ
-    @param bgsour_idx マップデータのインデックス (下位 16 ビットのみ使用)
-    @param bgdest_idx BG データエリアのインデックス (下位 16 ビットのみ使用)
-    """
-    moveal(fp[8], a0)
-    movew(fp[12 + 2], d0)
-    addw(d0, d0)
-    addaw(d0, a0)
-    lea([0xEBE000], a1)
-    movew(fp[16 + 2], d0)
-    addw(d0, d0)
-    addaw(d0, a1)
-    moveq(32 - 1, d0)  # 32 キャラクタ分転送する
-    label(bglp)
-    movew([a0.inc], [a1])
-    lea([64 * 2, a1], a1)
-    dbra(d0, bglp)
 
 
 @micropython.viper
