@@ -76,10 +76,12 @@ def setup_global_state(
 
 
 @micropython.viper
-def render():
+def vsync_and_render():
     """
-    スプライトと BG の表示を行う
+    垂直帰線期間を待ち、スプライトと BG の表示を行う
     """
+    x68k.vsync()  # 垂直帰線期間を待つ
+
     bgctrlreg = ptr16(BGCTRLREG)
     bgctrlreg[0] = 0x0000  # スプライト / BG の表示をオフにする
 
@@ -347,8 +349,7 @@ def mainloop():
                 int(x68k.iocs(x68k.i.B_KEYINP)) & 0xFF
             ):
                 break
-            x68k.vsync()  # 垂直帰線期間を待つ
-            render()  # スプライトと BG の表示を行う
+            vsync_and_render()  # スプライトと BG の表示を行う
             move()  # スプライトと BG の移動処理を行う
 
 
