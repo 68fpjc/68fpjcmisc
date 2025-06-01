@@ -48,7 +48,6 @@ def setup_global_state(
         p = ptr16(bgdat)
         for i in range(int(bgdat_idx_max)):
             p[i] ^= 0x0001
-        pass
 
     global spreg, spdat, bgdat, sp_offset0, sp_offset, num_sp
     global bgdat_idx_max, bgx, bgctr, bgsour_idx, bgdest_idx
@@ -89,7 +88,7 @@ def render():
     # 仮想スプライトスクロールレジスタから
     # (実) スプライトスクロールレジスタへブロック転送する
     if use_asm_int:
-        disp_asm_sp(spreg, num_sp)
+        render_asm_sp(spreg, num_sp)
     else:
         sp = ptr16(spreg)
         dp = ptr16(SPSCRLREG)
@@ -110,7 +109,7 @@ def render():
     if not bgctr:
         if use_asm_int:
             # インラインアセンブラには 5 つ以上の引数を渡せないようだ
-            disp_asm_bg(bgdat, bgsour_idx, bgdest_idx)
+            render_asm_bg(bgdat, bgsour_idx, bgdest_idx)
         else:
             sp = ptr16(bgdat)
             dp = ptr16(BGDATAAREA1)
@@ -124,7 +123,7 @@ def render():
 
 
 @micropython.asm_m68k
-def disp_asm_sp(spreg: bytes, num_sp: int):
+def render_asm_sp(spreg: bytes, num_sp: int):
     """
     スプライトの表示を行うアセンブラ実装
 
@@ -142,7 +141,7 @@ def disp_asm_sp(spreg: bytes, num_sp: int):
 
 
 @micropython.asm_m68k
-def disp_asm_bg(bgdat: bytes, bgsour_idx: int, bgdest_idx: int):
+def render_asm_bg(bgdat: bytes, bgsour_idx: int, bgdest_idx: int):
     """
     BG の表示を行うアセンブラ実装
 
@@ -335,16 +334,12 @@ def parse_args(argv):
     return num_sp, use_asm_int, use_asm_move, invert_bg
 
 
-def main():
+@micropython.viper
+def mainloop():
     """
-    メイン関数
+    メインループ
     """
-
-    @micropython.viper
-    def mainloop():
-        """
-        メインループ
-        """
+    with x68k.Super():
         move_first()  # 初回
         while True:
             # キーが押されたら終了する
@@ -355,6 +350,12 @@ def main():
             x68k.vsync()  # 垂直帰線期間を待つ
             render()  # スプライトと BG の表示を行う
             move()  # スプライトと BG の移動処理を行う
+
+
+def main():
+    """
+    メイン関数
+    """
 
     micropython.alloc_emergency_exception_buf(100)
 
@@ -376,8 +377,7 @@ def main():
         print("bgdat:", hex(uctypes.addressof(bgdat)))
         print("spreg:", hex(uctypes.addressof(spreg)))
 
-    with x68k.Super():
-        mainloop()
+    mainloop()
 
     s.disp(False)  # スプライト非表示
     x68k.curon()  # カーソル表示
