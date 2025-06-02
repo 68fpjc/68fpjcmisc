@@ -270,6 +270,33 @@ def update_spbuf(state):  # type: (GlobalState) -> None
 
     @param state GlobalState インスタンス
     """
+
+    @micropython.asm_m68k
+    def update_spbuf_asm(
+        spdat_buf: bytes, spreg_buf: bytearray, sp_offset: int, num_sp: int
+    ):
+        """
+        仮想スプライトスクロールレジスタを更新するアセンブラ実装
+
+        @param spdat_buf スプライト座標データ
+        @param spreg_buf 仮想スプライトスクロールレジスタ
+        @param sp_offset オフセット値 (下位 16 ビットのみ使用)
+        @param num_sp スプライトの数 (下位 16 ビットのみ使用)
+        """
+        moveal(fp[8], a0)  # spdat
+        moveal(fp[12], a1)  # spreg
+        movew(fp[16 + 2], d0)  # sp_offset
+        addw(d0, d0)
+        addw(d0, d0)
+        addaw(d0, a0)
+        movew(fp[20 + 2], d1)  # num_sp
+        subqw(1, d1)
+        label(setlp)
+        movel([a0.inc], [a1.inc])
+        addqw(8, a0)
+        addqw(4, a1)
+        dbra(d1, setlp)
+
     # スプライト
     v = int(state.sp_offset)
     if state.use_asm_move:
@@ -283,33 +310,6 @@ def update_spbuf(state):  # type: (GlobalState) -> None
             spreg_ptr[j + 0] = spdat_ptr[idx + 0]  # X 座標
             spreg_ptr[j + 1] = spdat_ptr[idx + 1]  # Y 座標
             i += 1
-
-
-@micropython.asm_m68k
-def update_spbuf_asm(
-    spdat_buf: bytes, spreg_buf: bytearray, sp_offset: int, num_sp: int
-):
-    """
-    仮想スプライトスクロールレジスタを更新するアセンブラ実装
-
-    @param spdat_buf スプライト座標データ
-    @param spreg_buf 仮想スプライトスクロールレジスタ
-    @param sp_offset オフセット値 (下位 16 ビットのみ使用)
-    @param num_sp スプライトの数 (下位 16 ビットのみ使用)
-    """
-    moveal(fp[8], a0)  # spdat
-    moveal(fp[12], a1)  # spreg
-    movew(fp[16 + 2], d0)  # sp_offset
-    addw(d0, d0)
-    addw(d0, d0)
-    addaw(d0, a0)
-    movew(fp[20 + 2], d1)  # num_sp
-    subqw(1, d1)
-    label(setlp)
-    movel([a0.inc], [a1.inc])
-    addqw(8, a0)
-    addqw(4, a1)
-    dbra(d1, setlp)
 
 
 def load_binary_file(filename: str) -> bytes:
