@@ -25,60 +25,106 @@ BGDATAAREA1 = const(0xEBE000)  # BG の BG データエリア 1
 WORD = const(2)  # ワードサイズ
 
 
-def setup_global_state(
-    opt_num_sp: int, opt_use_asm_int: bool, opt_use_asm_move: bool, opt_invert_bg: bool
-):
+class GlobalState:
     """
-    変数を初期化する。仕方なくグローバル変数で
-
-    - インスタンス変数等にするとアクセスが非常に重い
-    - 関数のローカル変数にするとバイパーモードでのアクセスが面倒
-
-    @param opt_num_sp スプライトの数
-    @param opt_use_asm_int 描画処理でインラインアセンブラを使用する場合は True
-    @param opt_use_asm_move 移動処理でインラインアセンブラを使用する場合は True
-    @param opt_invert_bg マップデータを反転する場合は True
+    状態を管理するクラス
     """
+
+    def __init__(self):
+        self.spreg = None
+        """仮想スプライトスクロールレジスタ"""
+        self.spdat = None
+        """スプライト座標データ"""
+        self.bgdat = None
+        """マップデータ"""
+        self.sp_offset0 = 0
+        """スプライト座標データのオフセット初期値"""
+        self.sp_offset = 0
+        """スプライト座標データのオフセット"""
+        self.bgdat_idx_max = 0
+        """マップデータの最大インデックス (ワード単位)"""
+        self.bgx = 0
+        """BG の X 表示座標"""
+        self.bgctr = 0
+        """BG 更新用カウンタ (0 〜 15)"""
+        self.bgsour_idx = 0
+        """マップデータのインデックス (0 〜 bgdat_idx_max - 1)"""
+        self.bgdest_idx = 32
+        """BG データエリアのインデックス (0 〜 63)"""
+        self.num_sp = 0
+        """スプライトの数"""
+        self.use_asm_int = False
+        """描画処理でインラインアセンブラを使用するか"""
+        self.use_asm_move = False
+        """移動処理でインラインアセンブラを使用するか"""
+
+    @classmethod
+    def create(
+        cls,
+        opt_num_sp: int,
+        opt_use_asm_int: bool,
+        opt_use_asm_move: bool,
+        opt_invert_bg: bool,
+    ):
+        """
+        GlobalState インスタンスを作成して初期化する
+
+        @param opt_num_sp スプライトの数
+        @param opt_use_asm_int 描画処理でインラインアセンブラを使用する場合は True
+        @param opt_use_asm_move 移動処理でインラインアセンブラを使用する場合は True
+        @param opt_invert_bg マップデータを反転する場合は True
+        @return 初期化済みの GlobalState インスタンス
+        """
+        instance = cls()
+
+        try:
+            instance.spdat = load_binary_file("spdat.bin")  # スプライト座標データ
+            instance.bgdat = load_binary_file("bgdat.bin")  # マップデータ
+        except OSError as e:
+            print(f"Error: {e}")
+            exit(1)
+
+        instance.spreg = create_spreg(opt_num_sp)  # 仮想スプライトスクロールレジスタ
+        instance.sp_offset0 = (
+            len(instance.spdat) // 2 // WORD // 2
+        )  # スプライト座標データのオフセット初期値
+        instance.sp_offset = instance.sp_offset0  # スプライト座標データのオフセット
+
+        instance.bgdat_idx_max = (
+            len(instance.bgdat) // WORD
+        )  # マップデータの最大インデックス (ワード単位)
+        instance.bgx = 0  # BG の X 表示座標
+        instance.bgctr = 0  # BG 更新用カウンタ (0 〜 15)
+        instance.bgsour_idx = 0  # マップデータのインデックス (0 〜 bgdat_idx_max - 1)
+        instance.bgdest_idx = 32  # BG データエリアのインデックス (0 〜 63)
+        instance.num_sp = opt_num_sp  # スプライトの数
+        instance.use_asm_int = (
+            opt_use_asm_int  # 描画処理でインラインアセンブラを使用するか
+        )
+        instance.use_asm_move = (
+            opt_use_asm_move  # 移動処理でインラインアセンブラを使用するか
+        )
+        if opt_invert_bg:
+            instance.invert_bgdat()
+
+        return instance
 
     @micropython.viper
-    def invert_bgdat():
+    def invert_bgdat(self):
         """
         マップデータを反転する
         """
-        p = ptr16(bgdat)
-        for i in range(int(bgdat_idx_max)):
+        p = ptr16(self.bgdat)
+        for i in range(int(self.bgdat_idx_max)):
             p[i] ^= 0x0001
-
-    global spreg, spdat, bgdat, sp_offset0, sp_offset, num_sp
-    global bgdat_idx_max, bgx, bgctr, bgsour_idx, bgdest_idx
-    global use_asm_int, use_asm_move
-    try:
-        spdat = load_binary_file("spdat.bin")  # スプライト座標データ
-        bgdat = load_binary_file("bgdat.bin")  # マップデータ
-    except OSError as e:
-        print(f"Error: {e}")
-        exit(1)
-
-    spreg = create_spreg(opt_num_sp)  # 仮想スプライトスクロールレジスタ
-    sp_offset0 = len(spdat) // 2 // WORD // 2  # スプライト座標データのオフセット初期値
-    sp_offset = sp_offset0  # スプライト座標データのオフセット
-
-    bgdat_idx_max = len(bgdat) // WORD  # マップデータの最大インデックス (ワード単位)
-    bgx = 0  # BG の X 表示座標
-    bgctr = 0  # BG 更新用カウンタ (0 〜 15)
-    bgsour_idx = 0  # マップデータのインデックス (0 〜 bgdat_idx_max - 1)
-    bgdest_idx = 32  # BG データエリアのインデックス (0 〜 63)
-    num_sp = opt_num_sp  # スプライトの数
-    use_asm_int = opt_use_asm_int  # 描画処理でインラインアセンブラを使用するか
-    use_asm_move = opt_use_asm_move  # 移動処理でインラインアセンブラを使用するか
-    if opt_invert_bg:
-        invert_bgdat()
 
 
 @micropython.viper
-def vsync_and_render():
+def vsync_and_render(state):
     """
     垂直帰線期間を待ち、スプライトと BG の表示を行う
+
+    @param state GlobalState インスタンス
     """
 
     @micropython.asm_m68k
@@ -122,14 +168,14 @@ def vsync_and_render():
         dbra(d0, bglp)
 
     # 垂直帰線期間を待つ前にグローバル変数をキャッシュしておく
-    _use_asm_int = use_asm_int
-    _spreg = spreg
-    _num_sp = num_sp
-    _bgdat = bgdat
-    _bgsour_idx = bgsour_idx
-    _bgdest_idx = bgdest_idx
-    _bgx = bgx
-    _bgctr = bgctr
+    _use_asm_int = state.use_asm_int
+    _spreg = state.spreg
+    _num_sp = state.num_sp
+    _bgdat = state.bgdat
+    _bgsour_idx = state.bgsour_idx
+    _bgdest_idx = state.bgdest_idx
+    _bgx = state.bgx
+    _bgctr = state.bgctr
 
     x68k.vsync()  # 垂直帰線期間を待つ
 
@@ -176,59 +222,63 @@ def vsync_and_render():
 
 
 @micropython.viper
-def move():
+def move(state):
     """
     スプライトと BG の移動処理を行う
+
+    @param state GlobalState インスタンス
     """
     # スプライト
-    global sp_offset
-    v = int(sp_offset) - 1
+    v = int(state.sp_offset) - 1
     if v < 0:
-        v = int(sp_offset0)  # 座標データのオフセットをリセットする
-    sp_offset = v
+        v = int(state.sp_offset0)  # 座標データのオフセットをリセットする
+    state.sp_offset = v
 
     # BG
-    global bgx, bgctr, bgsour_idx, bgdest_idx
-    bgx = int(bgx) + 1  # BG の表示 X 座標を更新する
-    v = int(bgctr)
-    bgctr = (v + 1) & 0x0F  # BG 更新用カウンタを更新する
+    state.bgx = int(state.bgx) + 1  # BG の表示 X 座標を更新する
+    v = int(state.bgctr)
+    state.bgctr = (v + 1) & 0x0F  # BG 更新用カウンタを更新する
     if v == 0:
-        v = int(bgsour_idx) + 32  # 縦 32 キャラクタ分進める
-        if v >= int(bgdat_idx_max):
+        v = int(state.bgsour_idx) + 32  # 縦 32 キャラクタ分進める
+        if v >= int(state.bgdat_idx_max):
             v = 0
-        bgsour_idx = v
+        state.bgsour_idx = v
 
-        v = int(bgdest_idx) + 1
+        v = int(state.bgdest_idx) + 1
         if v >= 64:
             v = 0
-        bgdest_idx = v
+        state.bgdest_idx = v
 
-    update_spbuf()  # 仮想スプライトスクロールレジスタを更新する
+    update_spbuf(state)  # 仮想スプライトスクロールレジスタを更新する
 
 
 @micropython.viper
-def move_first():
+def move_first(state):
     """
     スプライトと BG の移動処理を行う (初回)
+
+    @param state GlobalState インスタンス
     """
 
-    update_spbuf()  # 仮想スプライトスクロールレジスタを更新する
+    update_spbuf(state)  # 仮想スプライトスクロールレジスタを更新する
 
 
 @micropython.viper
-def update_spbuf():
+def update_spbuf(state):
     """
     仮想スプライトスクロールレジスタを更新する
+
+    @param state GlobalState インスタンス
     """
     # スプライト
-    v = int(sp_offset)
-    if use_asm_move:
-        update_spbuf_asm(spdat, spreg, v, num_sp)
+    v = int(state.sp_offset)
+    if state.use_asm_move:
+        update_spbuf_asm(state.spdat, state.spreg, v, state.num_sp)
     else:
-        spdat_ptr = ptr16(spdat)
-        spreg_ptr = ptr16(spreg)
+        spdat_ptr = ptr16(state.spdat)
+        spreg_ptr = ptr16(state.spreg)
         i = 0
-        for j in range(0, int(num_sp) * 4, 4):
+        for j in range(0, int(state.num_sp) * 4, 4):
             idx = (v + i * 3) * 2
             spreg_ptr[j + 0] = spdat_ptr[idx + 0]  # X 座標
             spreg_ptr[j + 1] = spdat_ptr[idx + 1]  # Y 座標
@@ -346,20 +396,22 @@ def parse_args(argv):
 
 
 @micropython.viper
-def mainloop():
+def mainloop(state):
     """
     メインループ
+
+    @param state GlobalState インスタンス
     """
     with x68k.Super():
-        move_first()  # 初回
+        move_first(state)  # 初回
         while True:
             # キーが押されたら終了する
             if (int(x68k.iocs(x68k.i.B_KEYSNS)) & 0xFFFF) and (
                 int(x68k.iocs(x68k.i.B_KEYINP)) & 0xFF
             ):
                 break
-            vsync_and_render()  # スプライトと BG の表示を行う
-            move()  # スプライトと BG の移動処理を行う
+            vsync_and_render(state)  # スプライトと BG の表示を行う
+            move(state)  # スプライトと BG の移動処理を行う
 
 
 def main():
@@ -377,17 +429,17 @@ def main():
     # コマンドライン引数を解析する
     opt_num_sp, opt_use_asm_int, opt_use_asm_move, opt_invert_bg = parse_args(argv)
 
-    setup_global_state(  # グローバル変数を初期化する
+    state = GlobalState.create(
         opt_num_sp, opt_use_asm_int, opt_use_asm_move, opt_invert_bg
     )
 
     # デバッグ情報
     if __debug__:
-        print("spdat:", hex(uctypes.addressof(spdat)))
-        print("bgdat:", hex(uctypes.addressof(bgdat)))
-        print("spreg:", hex(uctypes.addressof(spreg)))
+        print("spdat:", hex(uctypes.addressof(state.spdat)))
+        print("bgdat:", hex(uctypes.addressof(state.bgdat)))
+        print("spreg:", hex(uctypes.addressof(state.spreg)))
 
-    mainloop()
+    mainloop(state)
 
     s.disp(False)  # スプライト非表示
     x68k.curon()  # カーソル表示
