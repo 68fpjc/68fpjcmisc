@@ -120,7 +120,7 @@ class GlobalState:
 
 
 @micropython.viper
-def vsync_and_render(state):
+def vsync_and_render(state):  # type: (GlobalState) -> None
     """
     垂直帰線期間を待ち、スプライトと BG の表示を行う
 
@@ -222,7 +222,7 @@ def vsync_and_render(state):
 
 
 @micropython.viper
-def move(state):
+def move(state):  # type: (GlobalState) -> None
     """
     スプライトと BG の移動処理を行う
 
@@ -253,7 +253,7 @@ def move(state):
 
 
 @micropython.viper
-def move_first(state):
+def move_first(state):  # type: (GlobalState) -> None
     """
     スプライトと BG の移動処理を行う (初回)
 
@@ -264,7 +264,7 @@ def move_first(state):
 
 
 @micropython.viper
-def update_spbuf(state):
+def update_spbuf(state):  # type: (GlobalState) -> None
     """
     仮想スプライトスクロールレジスタを更新する
 
@@ -396,7 +396,7 @@ def parse_args(argv):
 
 
 @micropython.viper
-def mainloop(state):
+def mainloop(state):  # type: (GlobalState) -> None
     """
     メインループ
 
