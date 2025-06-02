@@ -328,8 +328,10 @@ def load_binary_file(filename: str) -> bytes:
             if __debug__:
                 print("OK")
             return data
-    except OSError as e:
-        raise OSError(f"Cannot load file '{filename}': {e}")
+    except OSError:
+        if __debug__:
+            print("Failed")
+        raise
 
 
 def create_spreg(num_sp: int) -> bytearray:
